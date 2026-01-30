@@ -1,4 +1,6 @@
-// ---------- TELEGRAM WEBAPP INITIALIZATION ----------
+import { db, ref, push, set } from './firebase-config.js';
+
+// ---------- TELEGRAM WEBAPP ----------
 let tg = null;
 let isTelegramWebApp = false;
 
@@ -6,47 +8,25 @@ function initTelegram() {
   if (window.Telegram && window.Telegram.WebApp) {
     tg = window.Telegram.WebApp;
     isTelegramWebApp = true;
-    
     tg.expand();
-    
     console.log('✅ Telegram WebApp initialized');
-    console.log('User:', tg.initDataUnsafe.user);
   } else {
     console.warn('⚠️ Not running in Telegram WebApp');
-    showWarning();
   }
 }
 
-function showWarning() {
-  const warning = document.createElement('div');
-  warning.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    background: #ff6600;
-    color: white;
-    padding: 12px;
-    text-align: center;
-    font-size: 14px;
-    z-index: 9999;
-  `;
-  warning.innerHTML = '⚠️ Bu ilova faqat Telegram bot orqali ishlaydi!';
-  document.body.prepend(warning);
-}
-
-// Initialize on load
 initTelegram();
 
-// ---------- 1. MAHSULOTLAR ----------
+// ---------- MAHSULOTLAR ----------
 const menu = [
   { id: 1, name: 'Klyukva-Burger kombo', price: 64000, img: 'https://i.ibb.co/sJtWCn5M/images-1.jpg' },
   { id: 2, name: 'Klyukva-Lavash kombo', price: 59000, img: 'https://i.ibb.co/sJtWCn5M/images-1.jpg' },
   { id: 3, name: 'Klyukva-Trindwich kombo', price: 62000, img: 'https://i.ibb.co/sJtWCn5M/images-1.jpg' },
   { id: 4, name: 'Klyukva-Burger', price: 44000, img: 'https://i.ibb.co/sJtWCn5M/images-1.jpg' },
+  { id: 5, name: 'Klyukva-Duble Burger', price: 74000, img: 'https://i.ibb.co/sJtWCn5M/images-1.jpg' },
 ];
 
-// ---------- 2. INDEXEDDB ----------
+// ---------- INDEXEDDB (Profil uchun) ----------
 const DB_NAME = 'bodrumDB';
 const STORE_PROFILE = 'profile';
 
@@ -64,18 +44,13 @@ function openDB() {
 }
 
 async function saveProfileDB({ name, phone }) {
-  try {
-    const db = await openDB();
-    const tx = db.transaction(STORE_PROFILE, 'readwrite');
-    tx.objectStore(STORE_PROFILE).put({ id: 1, name, phone });
-    await new Promise((resolve, reject) => {
-      tx.oncomplete = resolve;
-      tx.onerror = reject;
-    });
-  } catch (error) {
-    console.error('❌ Error saving profile:', error);
-    throw error;
-  }
+  const db = await openDB();
+  const tx = db.transaction(STORE_PROFILE, 'readwrite');
+  tx.objectStore(STORE_PROFILE).put({ id: 1, name, phone });
+  await new Promise((resolve, reject) => {
+    tx.oncomplete = resolve;
+    tx.onerror = reject;
+  });
 }
 
 async function getProfileDB() {
@@ -89,13 +64,15 @@ async function getProfileDB() {
     });
     return result;
   } catch (error) {
-    console.error('❌ Error:', error);
     return null;
   }
 }
 
-// ---------- 3. LOCALSTORAGE ----------
+// ---------- LOCALSTORAGE (Savat) ----------
 const CART_KEY = 'bodrum_cart';
+let cart = [];
+let currentLocation = null;
+let selectedPaymentMethod = 'payme';
 
 function saveCartLS() {
   localStorage.setItem(CART_KEY, JSON.stringify(cart));
@@ -106,62 +83,56 @@ function loadCartLS() {
   cart = raw ? JSON.parse(raw) : [];
 }
 
-// ---------- 4. TAB SWITCH ----------
-document.querySelectorAll('.tab').forEach(btn =>
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab, .tab-content').forEach(el => el.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById(btn.dataset.tab).classList.add('active');
-  })
-);
-
-// ---------- 5. CART ----------
+// ---------- UI ELEMENTS ----------
 const menuGrid = document.getElementById('menuGrid');
 const cartList = document.getElementById('cartList');
 const cartBadge = document.getElementById('cartBadge');
 const cartTotal = document.getElementById('cartTotal');
 const orderBtn = document.getElementById('orderBtn');
-
-let cart = [];
-let currentLocation = null;
-let selectedPaymentMethod = 'payme';
+const paymentModal = document.getElementById('paymentModal');
+const paymentTotal = document.getElementById('paymentTotal');
+const paymentPhone = document.getElementById('paymentPhone');
+const paymentForm = document.getElementById('paymentForm');
+const paymentSuccess = document.getElementById('paymentSuccess');
+const confirmPaymentBtn = document.getElementById('confirmPaymentBtn');
+const confirmCodeBtn = document.getElementById('confirmCodeBtn');
+const smsCodeGroup = document.getElementById('smsCodeGroup');
+const btnText = document.getElementById('btnText');
+const btnLoader = document.getElementById('btnLoader');
 
 loadCartLS();
 renderCart();
+renderMenu();
 
-// Menu render
-menu.forEach(item => {
-  const card = document.createElement('div');
-  card.className = 'card';
-  card.innerHTML = `
-    <img src="${item.img}" alt="${item.name}" onerror="this.src='https://via.placeholder.com/120?text=No+Image'">
-    <h3>${item.name}</h3>
-    <div class="price">${item.price.toLocaleString()} so'm</div>
-    <button class="add-btn-only" data-id="${item.id}">Savatchaga</button>
-  `;
-  menuGrid.appendChild(card);
-});
+function renderMenu() {
+  menuGrid.innerHTML = '';
+  menu.forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <img src="${item.img}" alt="${item.name}" onerror="this.src='https://via.placeholder.com/120?text=No+Image'">
+      <h3>${item.name}</h3>
+      <div class="price">${item.price.toLocaleString()} so'm</div>
+      <button class="add-btn-only" data-id="${item.id}">Savatchaga</button>
+    `;
+    menuGrid.appendChild(card);
+  });
+}
 
-// Add to cart
 menuGrid.addEventListener('click', e => {
   if (e.target.classList.contains('add-btn-only')) {
     const id = +e.target.dataset.id;
     const product = menu.find(p => p.id === id);
     const exist = cart.find(c => c.id === id);
     
-    if (exist) {
-      exist.qty++;
-    } else {
-      cart.push({ ...product, qty: 1 });
-    }
+    if (exist) exist.qty++;
+    else cart.push({ ...product, qty: 1 });
     
     saveCartLS();
     renderCart();
     
-    // Animatsiya
-    const badge = document.getElementById('cartBadge');
-    badge.style.transform = 'scale(1.3)';
-    setTimeout(() => badge.style.transform = 'scale(1)', 200);
+    cartBadge.style.transform = 'scale(1.3)';
+    setTimeout(() => cartBadge.style.transform = 'scale(1)', 200);
   }
 });
 
@@ -199,74 +170,48 @@ function renderCart() {
     `);
   });
   
-  const totalQty = cart.reduce((s, i) => s + i.qty, 0);
-  cartBadge.textContent = totalQty;
+  cartBadge.textContent = cart.reduce((s, i) => s + i.qty, 0);
   cartTotal.textContent = `Umumiy: ${total.toLocaleString()} so'm`;
 }
 
-// Cart controls
 cartList.addEventListener('click', e => {
   const idx = +e.target.dataset.idx;
   if (isNaN(idx)) return;
   
   const act = e.target.dataset.act;
-  if (act === '+') {
-    cart[idx].qty++;
-  } else if (act === '-') {
+  if (act === '+') cart[idx].qty++;
+  else if (act === '-') {
     if (cart[idx].qty > 1) cart[idx].qty--;
     else cart.splice(idx, 1);
   }
   
-  if (e.target.closest('.cart-item-delete')) {
-    cart.splice(idx, 1);
-  }
+  if (e.target.closest('.cart-item-delete')) cart.splice(idx, 1);
   
   saveCartLS();
   renderCart();
 });
 
-// Joylashuvni olish
 function requestLocation() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       reject(new Error('Geolocation not supported'));
       return;
     }
-    
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const lat = position.coords.latitude;
-        const lon = position.coords.longitude;
-        resolve(`${lat},${lon}`);
-      },
-      (error) => {
-        reject(error);
-      },
+      (position) => resolve(`${position.coords.latitude},${position.coords.longitude}`),
+      (error) => reject(error),
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   });
 }
 
-// ---------- PAYMENT MODAL LOGIC ----------
-const paymentModal = document.getElementById('paymentModal');
-const paymentTotal = document.getElementById('paymentTotal');
-const paymentPhone = document.getElementById('paymentPhone');
-const paymentForm = document.getElementById('paymentForm');
-const paymentSuccess = document.getElementById('paymentSuccess');
-const confirmPaymentBtn = document.getElementById('confirmPaymentBtn');
-const confirmCodeBtn = document.getElementById('confirmCodeBtn');
-const smsCodeGroup = document.getElementById('smsCodeGroup');
-const btnText = document.getElementById('btnText');
-const btnLoader = document.getElementById('btnLoader');
-
-// To'lov usullarini tanlash
+// To'lov usullari
 document.querySelectorAll('.payment-method').forEach(method => {
   method.addEventListener('click', () => {
     document.querySelectorAll('.payment-method').forEach(m => m.classList.remove('active'));
     method.classList.add('active');
     selectedPaymentMethod = method.dataset.method;
     
-    // Naqd to'lov uchun maxsus ko'rinish
     if (selectedPaymentMethod === 'cash') {
       document.querySelector('.payment-info').textContent = '💵 Yetkazib berilganda naqd pul to\'laysiz';
       smsCodeGroup.style.display = 'none';
@@ -280,12 +225,10 @@ document.querySelectorAll('.payment-method').forEach(method => {
   });
 });
 
-// Telefon formati
 paymentPhone.addEventListener('input', (e) => {
   e.target.value = e.target.value.replace(/\D/g, '').slice(0, 9);
 });
 
-// To'lovni boshlash
 orderBtn.addEventListener('click', async () => {
   if (!cart.length) {
     alert('Savat bo\'sh!');
@@ -299,16 +242,13 @@ orderBtn.addEventListener('click', async () => {
     return;
   }
   
-  // Joylashuvni olish
   orderBtn.disabled = true;
   orderBtn.textContent = 'Joylashuv aniqlanmoqda...';
   
   try {
     currentLocation = await requestLocation();
-    console.log('📍 Location:', currentLocation);
   } catch (error) {
     console.warn('Location error:', error);
-    // Joylashuv olmasa ham davom etish (ixtiyoriy)
     if (!confirm('Joylashuvni aniqlashda xatolik. Davom etishni xohlaysizmi?')) {
       orderBtn.disabled = false;
       orderBtn.textContent = 'Buyurtma berish';
@@ -316,24 +256,17 @@ orderBtn.addEventListener('click', async () => {
     }
   }
   
-  // To'lov modalini ochish
   const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
   paymentTotal.textContent = total.toLocaleString() + ' so\'m';
-  
-  // Profil telefonini avto to'ldirish
   paymentPhone.value = profile.phone || '';
   
-  // Modalni ko'rsatish
   paymentModal.classList.add('show');
-  
   orderBtn.disabled = false;
   orderBtn.textContent = 'Buyurtma berish';
 });
 
-// To'lov tugmasi bosilganda
 confirmPaymentBtn.addEventListener('click', async () => {
   const phone = paymentPhone.value.trim();
-  
   if (!phone || phone.length !== 9) {
     alert('Telefon raqamni to\'g\'ri kiriting!');
     paymentPhone.focus();
@@ -341,49 +274,40 @@ confirmPaymentBtn.addEventListener('click', async () => {
   }
   
   if (selectedPaymentMethod === 'cash') {
-    // Naqd to'lov - to'g'ridan-to'g'ri buyurtma
     await completeOrder('cash', 'pending');
     return;
   }
   
-  // Payme/Click uchun SMS kod imitatsiyasi
   btnText.textContent = 'Kod yuborilmoqda...';
   btnLoader.style.display = 'inline-block';
   confirmPaymentBtn.disabled = true;
   
-  // Simulyatsiya - 2 soniya kutish
   setTimeout(() => {
     btnLoader.style.display = 'none';
     smsCodeGroup.style.display = 'block';
     confirmPaymentBtn.style.display = 'none';
     confirmCodeBtn.style.display = 'block';
-    
-    // Kod kiritish maydoniga fokus
     document.getElementById('smsCode').focus();
-    
     alert('📱 Test rejimi: SMS kod - 12345');
   }, 1500);
 });
 
-// SMS kodni tasdiqlash
 confirmCodeBtn.addEventListener('click', async () => {
   const code = document.getElementById('smsCode').value.trim();
-  
   if (code !== '12345') {
     alert('Noto\'g\'ri kod! Test rejimi uchun: 12345');
     return;
   }
-  
   await completeOrder(selectedPaymentMethod, 'paid');
 });
 
-// Buyurtmani yakunlash funksiyasi
+// ===================== ASOSIY O'ZGARISH =====================
+// Firebase ga buyurtma saqlash (localStorage o'rniga)
 async function completeOrder(paymentMethod, paymentStatus) {
   const profile = await getProfileDB();
   const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
   
-  const order = {
-    id: Date.now(),
+  const orderData = {
     name: profile.name,
     phone: profile.phone,
     items: [...cart],
@@ -391,39 +315,40 @@ async function completeOrder(paymentMethod, paymentStatus) {
     status: 'pending',
     createdAt: new Date().toISOString(),
     location: currentLocation,
-    paymentMethod: paymentMethod, // payme, click, cash
-    paymentStatus: paymentStatus, // paid, pending
-    tg_id: tg?.initDataUnsafe?.user?.id || null
+    paymentMethod: paymentMethod,
+    paymentStatus: paymentStatus,
+    tg_id: tg?.initDataUnsafe?.user?.id || null,
+    deviceInfo: navigator.userAgent
   };
   
-  // LocalStorage ga saqlash
-  const existingOrders = JSON.parse(localStorage.getItem('bodrum_admin_orders') || '[]');
-  existingOrders.unshift(order);
-  localStorage.setItem('bodrum_admin_orders', JSON.stringify(existingOrders));
-  
-  // Muvaffaqiyatli ko'rsatish
-  paymentForm.style.display = 'none';
-  paymentSuccess.style.display = 'block';
-  
-  // 2 soniyadan keyin yopish
-  setTimeout(() => {
-    // Modalni yopish
-    closePaymentModal();
+  try {
+    // Firebase ga yuborish (ASOSIY)
+    const ordersRef = ref(db, 'orders');
+    const newOrderRef = push(ordersRef);
+    await set(newOrderRef, orderData);
     
-    // Savatni tozalash
-    cart = [];
-    saveCartLS();
-    renderCart();
+    console.log('✅ Firebase ga yuborildi:', newOrderRef.key);
     
-    // Profilga o'tish
-    document.querySelector('[data-tab="profile"]').click();
-  }, 2000);
+    // Muvaffaqiyatli ko'rsatish
+    paymentForm.style.display = 'none';
+    paymentSuccess.style.display = 'block';
+    
+    setTimeout(() => {
+      closePaymentModal();
+      cart = [];
+      saveCartLS();
+      renderCart();
+      document.querySelector('[data-tab="profile"]').click();
+    }, 2000);
+    
+  } catch (error) {
+    console.error('❌ Firebase xato:', error);
+    alert('Xatolik yuz berdi: ' + error.message);
+  }
 }
 
 function closePaymentModal() {
   paymentModal.classList.remove('show');
-  
-  // Reset form
   setTimeout(() => {
     paymentForm.style.display = 'block';
     paymentSuccess.style.display = 'none';
@@ -438,44 +363,24 @@ function closePaymentModal() {
   }, 300);
 }
 
-// ---------- PROFILE ----------
+// Profil
 const profModal = document.getElementById('profModal');
 const modalName = document.getElementById('modalName');
 const modalPhone = document.getElementById('modalPhone');
 const modalSave = document.getElementById('modalSave');
 
-function openProfModal() {
-  profModal.classList.add('show');
-  modalName.focus();
-}
-
-function closeProfModal() {
-  profModal.classList.remove('show');
-}
-
 modalSave.addEventListener('click', async () => {
   const name = modalName.value.trim();
   const phone = modalPhone.value.trim();
   
-  if (!name) {
-    alert('Ismingizni kiriting!');
-    modalName.focus();
+  if (!name || !phone || phone.length !== 9) {
+    alert('Iltimos, ma\'lumotlarni to\'g\'ri kiriting!');
     return;
   }
   
-  if (!phone || phone.length !== 9) {
-    alert('Telefon 9 ta raqam bo\'lishi kerak!');
-    modalPhone.focus();
-    return;
-  }
-  
-  try {
-    await saveProfileDB({ name, phone });
-    closeProfModal();
-    alert('✅ Profil saqlandi!');
-  } catch (error) {
-    alert('Xatolik yuz berdi.');
-  }
+  await saveProfileDB({ name, phone });
+  profModal.classList.remove('show');
+  alert('✅ Profil saqlandi!');
 });
 
 const inpName = document.getElementById('inpName');
@@ -491,75 +396,48 @@ document.querySelector('[data-tab="profile"]').addEventListener('click', async (
   renderUserOrders();
 });
 
-function renderUserOrders() {
+// Profil ichida buyurtmalarni ko'rsatish (Firebase dan)
+async function renderUserOrders() {
   const ordersList = document.getElementById('ordersList');
-  const allOrders = JSON.parse(localStorage.getItem('bodrum_admin_orders') || '[]');
   
-  if (allOrders.length === 0) {
-    ordersList.innerHTML = 'Hali buyurtma yo\'q';
-    return;
-  }
-  
-  const recentOrders = allOrders.slice(0, 5);
-  
-  ordersList.innerHTML = recentOrders.map(order => {
-    const date = new Date(order.createdAt);
-    const dateStr = date.toLocaleDateString('uz-UZ');
-    const timeStr = date.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
+  try {
+    // Firebase dan o'z buyurtmalarini olish (telefon bo'yicha)
+    const profile = await getProfileDB();
+    if (!profile) {
+      ordersList.innerHTML = 'Profil ma\'lumotlari topilmadi';
+      return;
+    }
     
-    const paymentIcon = order.paymentMethod === 'payme' ? '💳 Payme' : 
-                       order.paymentMethod === 'click' ? '💳 Click' : '💵 Naqd';
-    
-    return `
-      <div class="order-item" style="border-bottom: 1px solid #eee; padding: 10px 0; margin-bottom: 10px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-          <span style="font-weight:600; color:#ff6600;">${order.total?.toLocaleString()} so'm</span>
-          <span style="font-size:11px; color:#666;">${paymentIcon}</span>
+    // Bu qismda faqat local ko'rinish uchun (optional)
+    // Haqiqiy buyurtmalar admin panelda ko'rinadi
+    ordersList.innerHTML = `
+      <div style="background:#fff; padding:15px; border-radius:8px; text-align:center;">
+        <div style="color:#666; font-size:14px; margin-bottom:5px;">👋 Salom, ${profile.name}!</div>
+        <div style="color:#888; font-size:13px;">
+          Buyurtmalaringiz admin panelida ko'rinadi.<br>
+          📞 +998 ${profile.phone}
         </div>
-        <div style="font-size: 13px; color: #333; margin-bottom: 4px;">
-          ${order.items.map(i => i.name).join(', ')}
-        </div>
-        <div style="font-size: 12px; color: #888;">
-          ${dateStr} ${timeStr}
-        </div>
-        <div style="font-size: 12px; margin-top: 4px; padding: 2px 8px; border-radius: 4px; display: inline-block; ${
-          order.status === 'pending' ? 'background: #fff3e0; color: #ff6600;' : 
-          order.status === 'accepted' ? 'background: #e8f5e9; color: #2e7d32;' : 
-          'background: #ffebee; color: #c62828;'
-        }">
-          ${order.status === 'pending' ? 'Kutilmoqda' : 
-            order.status === 'accepted' ? 'Qabul qilindi' : 
-            order.status === 'rejected' ? 'Bekor qilindi' : 'Yetkazildi'}
-        </div>
-        ${order.paymentStatus === 'paid' ? '<span style="color:#00c853; font-size:11px; margin-left:8px;">✅ To\'langan</span>' : ''}
       </div>
     `;
-  }).join('');
+  } catch (e) {
+    ordersList.innerHTML = 'Xatolik yuz berdi';
+  }
 }
 
 saveProf.addEventListener('click', async () => {
   const name = inpName.value.trim();
   const phone = inpPhone.value.trim();
   
-  if (!name || !phone) {
+  if (!name || !phone || phone.length !== 9) {
     alert('Iltimos, hammasini to\'ldiring!');
     return;
   }
   
-  if (phone.length !== 9) {
-    alert('Telefon 9 ta raqamdan iborat bo\'lishi kerak!');
-    return;
-  }
-  
-  try {
-    await saveProfileDB({ name, phone });
-    alert('✅ Saqlandi!');
-  } catch (error) {
-    alert('Xatolik!');
-  }
+  await saveProfileDB({ name, phone });
+  alert('✅ Saqlandi!');
 });
 
-[inpPhone, modalPhone].forEach(input => {
+[inpPhone, modalPhone, paymentPhone].forEach(input => {
   if (input) {
     input.addEventListener('input', (e) => {
       e.target.value = e.target.value.replace(/\D/g, '').slice(0, 9);
@@ -567,4 +445,4 @@ saveProf.addEventListener('click', async () => {
   }
 });
 
-console.log('🎉 App initialized');
+console.log('🎉 App initialized with Firebase');
