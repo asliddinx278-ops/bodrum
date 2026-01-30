@@ -1,7 +1,7 @@
-import { db, ref, onValue, update, remove } from './firebase-config.js';
+import { db, ref, onValue, update } from './firebase-config.js';
 
 let tg = null;
-let currentOrderId = null;
+let currentOrderKey = null;
 let orders = [];
 
 function init() {
@@ -11,25 +11,21 @@ function init() {
     tg = window.Telegram.WebApp;
     tg.expand();
     tg.ready();
-    tg.HapticFeedback?.impactOccurred('light');
+    console.log('✅ Telegram WebApp loaded');
   }
   
-  // Firebase real-time tinglash
   listenToOrders();
-  
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
-  }
-  
   console.log('✅ Admin panel ready');
 }
 
-// Firebase dan real-time buyurtmalarni olish
+// Firebase dan real-time tinglash
 function listenToOrders() {
+  console.log('👂 Firebase dan tinglanmoqda...');
   const ordersRef = ref(db, 'orders');
   
   onValue(ordersRef, (snapshot) => {
     const data = snapshot.val();
+    console.log('📥 Firebase dan ma\'lumot:', data ? 'Keldi' : 'Bo\'sh');
     
     if (data) {
       // Object dan Array ga aylantirish
@@ -38,28 +34,18 @@ function listenToOrders() {
         ...value
       })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       
-      // Yangi buyurtma tekshirish
-      const oldOrderIds = new Set(orders.map(o => o.firebaseKey));
-      const newOrders = ordersArray.filter(o => !oldOrderIds.has(o.firebaseKey) && o.status === 'pending');
-      
-      if (newOrders.length > 0 && orders.length > 0) {
-        // Yangi buyurtma keldi!
+      // Yangi buyurtma tekshirish (birinchi marta emas)
+      if (orders.length > 0) {
+        const oldKeys = new Set(orders.map(o => o.firebaseKey));
+        const newOrders = ordersArray.filter(o => !oldKeys.has(o.firebaseKey) && o.status === 'pending');
+        
         newOrders.forEach(order => {
           playNotificationSound();
-          showNotification(order);
-          
-          if (tg?.HapticFeedback) {
-            tg.HapticFeedback.notificationOccurred('success');
-          }
-          
           if (tg?.showPopup) {
             tg.showPopup({
               title: '🛎️ Yangi buyurtma!',
-              message: `${order.name} - ${order.total?.toLocaleString()} so'm\n📱 +998${order.phone}\n💳 ${order.paymentMethod || 'Naqd'}`,
-              buttons: [
-                { id: 'view', type: 'default', text: "Ko'rish" },
-                { id: 'close', type: 'cancel', text: 'Yopish' }
-              ]
+              message: `${order.name} - ${order.total?.toLocaleString()} so'm`,
+              buttons: [{ id: 'view', type: 'default', text: "Ko'rish" }, { id: 'close', type: 'cancel', text: 'Yopish' }]
             }, (btnId) => {
               if (btnId === 'view') openOrderModal(order.firebaseKey);
             });
@@ -69,13 +55,15 @@ function listenToOrders() {
       
       orders = ordersArray;
       renderOrders();
-      console.log('📦 Orders updated:', orders.length);
     } else {
       orders = [];
       renderOrders();
     }
   }, (error) => {
-    console.error('Firebase error:', error);
+    console.error('❌ Firebase xato:', error.message);
+    if (error.message.includes('permission_denied')) {
+      alert('❌ Ruxsat yo\'q! Firebase Rules ni oching');
+    }
   });
 }
 
@@ -94,9 +82,9 @@ function renderOrders() {
     newList.innerHTML = newOrders.map(order => createOrderCard(order)).join('');
   }
   
-  // Qabul qilinganlar (oxirgi 10 ta)
+  // Qabul qilinganlar
   const acceptedList = document.getElementById('acceptedOrdersList');
-  const recentAccepted = acceptedOrders.slice(0, 10);
+  const recentAccepted = acceptedOrders.slice(0, 5);
   if (recentAccepted.length === 0) {
     acceptedList.innerHTML = '<div class="empty-state">Qabul qilingan buyurtmalar yo\'q</div>';
   } else {
@@ -117,10 +105,7 @@ function createOrderCard(order) {
   
   const paymentMethod = order.paymentMethod || 'cash';
   const paymentStatus = order.paymentStatus || 'pending';
-  const paymentText = paymentMethod === 'payme' ? 'Payme' : paymentMethod === 'click' ? 'Click' : 'Naqd';
-  
-  // Vaqt formati
-  const dateStr = date.toLocaleDateString('uz-UZ');
+  const paymentText = paymentMethod === 'payme' ? '💳 Payme' : paymentMethod === 'click' ? '💳 Click' : '💵 Naqd';
   
   return `
     <div class="order-card ${order.status === 'pending' ? 'new' : ''}" data-order-id="${order.firebaseKey}">
@@ -148,8 +133,7 @@ function getStatusText(status) {
   const texts = {
     'pending': 'Yangi',
     'accepted': 'Qabul qilindi',
-    'rejected': 'Bekor qilindi',
-    'delivered': 'Yetkazildi'
+    'rejected': 'Bekor qilindi'
   };
   return texts[status] || status;
 }
@@ -158,7 +142,7 @@ function openOrderModal(orderId) {
   const order = orders.find(o => o.firebaseKey === orderId);
   if (!order) return;
   
-  currentOrderId = orderId;
+  currentOrderKey = orderId;
   
   document.getElementById('modalOrderId').textContent = orderId.slice(-6);
   document.getElementById('modalCustomer').textContent = order.name || "Noma'lum";
@@ -168,13 +152,18 @@ function openOrderModal(orderId) {
   const date = new Date(order.createdAt);
   document.getElementById('modalTime').textContent = date.toLocaleString('uz-UZ');
   
+  // To'lov
+  const paymentMethod = order.paymentMethod || 'cash';
+  const paymentStatus = order.paymentStatus || 'pending';
+  document.getElementById('modalPayment').textContent = 
+    `${paymentStatus === 'paid' ? '✅' : '⏳'} ${paymentMethod.toUpperCase()}`;
+  
   // Joylashuv
   const locationEl = document.getElementById('modalLocation');
   if (order.location && order.location.includes(',')) {
     const [lat, lng] = order.location.split(',');
     locationEl.href = `https://maps.google.com/?q=${lat.trim()},${lng.trim()}`;
     locationEl.style.display = 'inline';
-    locationEl.textContent = "Xaritada ko'rish";
   } else {
     locationEl.style.display = 'none';
   }
@@ -189,75 +178,49 @@ function openOrderModal(orderId) {
   `).join('') || "<li>Mahsulotlar yo'q</li>";
   document.getElementById('modalItems').innerHTML = itemsHtml;
   
-  // Tugmalar (faqat pending bo'lsa)
-  const actionsDiv = document.getElementById('modalActions');
-  actionsDiv.style.display = order.status === 'pending' ? 'flex' : 'none';
+  // Tugmalar
+  document.getElementById('modalActions').style.display = order.status === 'pending' ? 'flex' : 'none';
   
   document.getElementById('orderModal').classList.add('show');
 }
 
-// Firebase da statusni yangilash
 async function acceptOrder() {
-  if (!currentOrderId) return;
+  if (!currentOrderKey) return;
   
   try {
-    const orderRef = ref(db, `orders/${currentOrderId}`);
-    await update(orderRef, { 
+    await update(ref(db, `orders/${currentOrderKey}`), { 
       status: 'accepted',
       acceptedAt: new Date().toISOString()
     });
-    
     showToast("✅ Buyurtma qabul qilindi!");
     closeModal();
-    
   } catch (error) {
     console.error('Error:', error);
-    showToast("❌ Xatolik: " + error.message);
+    showToast("❌ Xatolik");
   }
 }
 
 async function rejectOrder() {
-  if (!currentOrderId) return;
-  if (!confirm('Buyurtmani bekor qilishni xohlaysizmi?')) return;
+  if (!currentOrderKey || !confirm('Bekor qilishni tasdiqlaysizmi?')) return;
   
   try {
-    const orderRef = ref(db, `orders/${currentOrderId}`);
-    await update(orderRef, { 
+    await update(ref(db, `orders/${currentOrderKey}`), { 
       status: 'rejected',
       rejectedAt: new Date().toISOString()
     });
-    
-    showToast('❌ Buyurtma bekor qilindi');
+    showToast('❌ Bekor qilindi');
     closeModal();
   } catch (error) {
     console.error('Error:', error);
-    showToast("❌ Xatolik: " + error.message);
   }
 }
 
-// Bildirishnomalar
 function playNotificationSound() {
-  try {
-    const sound = document.getElementById('notifySound');
-    if (sound) {
-      sound.currentTime = 0;
-      sound.volume = 0.5;
-      sound.play().catch(e => {});
-    }
-  } catch (e) {}
-}
-
-function showNotification(order) {
-  try {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification('🛎️ Yangi buyurtma!', {
-        body: `${order.name} - ${order.total?.toLocaleString()} so'm`,
-        icon: 'https://i.ibb.co/sJtWCn5M/images-1.jpg',
-        tag: order.firebaseKey,
-        requireInteraction: true
-      });
-    }
-  } catch (e) {}
+  const sound = document.getElementById('notifySound');
+  if (sound) {
+    sound.currentTime = 0;
+    sound.play().catch(e => {});
+  }
 }
 
 function showToast(message) {
@@ -266,43 +229,24 @@ function showToast(message) {
     position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
     background: #333; color: #fff; padding: 12px 24px; border-radius: 8px;
     z-index: 9999; font-size: 14px; animation: fadeInUp 0.3s ease;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
   `;
   toast.textContent = message;
   document.body.appendChild(toast);
-  
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transition = 'opacity 0.3s';
-    setTimeout(() => toast.remove(), 300);
-  }, 2000);
+  setTimeout(() => toast.remove(), 2000);
 }
 
 function closeModal() {
   document.getElementById('orderModal').classList.remove('show');
-  currentOrderId = null;
+  currentOrderKey = null;
 }
 
-// Global scoped functions (HTML dan chaqirish uchun)
+// Global functions
 window.acceptOrder = acceptOrder;
 window.rejectOrder = rejectOrder;
 window.closeModal = closeModal;
 
-// Event listeners
+// Events
 document.addEventListener('DOMContentLoaded', init);
 document.getElementById('orderModal')?.addEventListener('click', (e) => {
   if (e.target.id === 'orderModal') closeModal();
 });
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeModal();
-});
-
-// CSS animation
-const style = document.createElement('style');
-style.textContent = `
-  @keyframes fadeInUp {
-    from { opacity: 0; transform: translate(-50%, 20px); }
-    to { opacity: 1; transform: translate(-50%, 0); }
-  }
-`;
-document.head.appendChild(style);
