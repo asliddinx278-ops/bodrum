@@ -118,4 +118,125 @@ main { flex: 1; overflow-y: auto; }
 .order-date { font-size: 12px; color: #888; margin-top: 4px; }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
 @keyframes up { from { transform: translateY(60px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+
+/* ===== PAYMENT MODAL ===== */
+.payment-modal {
+  max-width: 380px;
+}
+
+.payment-amount {
+  background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%);
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.amount-label {
+  display: block;
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.amount-value {
+  display: block;
+  font-size: 24px;
+  font-weight: 700;
+  color: #ff6600;
+}
+
+.payment-methods {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.payment-method {
+  flex: 1;
+  padding: 12px 8px;
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  background: #fff;
+}
+
+.payment-method img {
+  height: 24px;
+  width: auto;
+  margin-bottom: 4px;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.payment-method span {
+  font-size: 12px;
+  color: #333;
+  font-weight: 500;
+}
+
+.payment-method.active {
+  border-color: #ff6600;
+  background: #fff3e0;
+}
+
+.payment-method:hover {
+  border-color: #ff6600;
+}
+
+.payment-info {
+  background: #e3f2fd;
+  color: #1976d2;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.loader {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #ffffff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Payment status in admin */
+.payment-status {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.payment-status.paid {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.payment-status.pending {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
+.payment-status.cod {
+  background: #e3f2fd;
+  color: #1976d2;
+}
