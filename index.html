@@ -6,7 +6,6 @@
   <title>BODRUM</title>
   <link rel="stylesheet" href="style.css"/>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="script.js"></script>
 </head>
 <body>
   <div class="brand" id="brand">BODRUM</div>
@@ -18,7 +17,7 @@
 
     <section id="cart" class="tab-content">
       <div id="cartList" class="cart-list"></div>
-      <div id="cartTotal">Umumiy: 0 so‘m</div>
+      <div id="cartTotal">Umumiy: 0 so'm</div>
       <button id="orderBtn">Buyurtma berish</button>
     </section>
 
@@ -26,7 +25,7 @@
       <div class="prof-card">
         <div class="prof-header">Profil</div>
         <div class="sect">
-          <div class="sect-title">Ma’lumotlar</div>
+          <div class="sect-title">Ma'lumotlar</div>
           <div class="input-group">
             <input id="inpName" type="text" required maxlength="30"/>
             <label>Ismingiz</label>
@@ -38,16 +37,17 @@
           <button id="saveProf" class="prof-btn">Saqlash</button>
         </div>
         <div class="sect">
-          <div class="sect-title">Buyurtmalar</div>
-          <div id="ordersList" class="orders-list">Hali buyurtma yo‘q</div>
+          <div class="sect-title">Buyurtmalar tarixi</div>
+          <div id="ordersList" class="orders-list">Hali buyurtma yo'q</div>
         </div>
       </div>
     </section>
   </main>
 
+  <!-- Profile Modal (First Time) -->
   <div id="profModal" class="modal-overlay">
     <div class="modal-box">
-      <div class="modal-title">Ma’lumotlarni to‘ldiring</div>
+      <div class="modal-title">Ma'lumotlarni to'ldiring</div>
       <div class="input-group">
         <input id="modalName" type="text" required maxlength="30"/>
         <label>Ismingiz</label>
@@ -57,6 +57,67 @@
         <label>Telefon (+998)</label>
       </div>
       <button id="modalSave" class="prof-btn">Davom etish</button>
+    </div>
+  </div>
+
+  <!-- Payment Modal -->
+  <div id="paymentModal" class="modal-overlay">
+    <div class="modal-box payment-modal">
+      <div class="modal-title">💳 To'lov</div>
+      
+      <div class="payment-amount">
+        <span class="amount-label">To'lov summasi:</span>
+        <span id="paymentTotal" class="amount-value">0 so'm</span>
+      </div>
+
+      <div class="payment-methods">
+        <div class="payment-method active" data-method="payme">
+          <img src="https://cdn.paycom.uz/payme/logo/payme-logo.svg" alt="Payme" onerror="this.style.display='none'">
+          <span>Payme</span>
+        </div>
+        <div class="payment-method" data-method="click">
+          <img src="https://click.uz/static/media/logo.324f8e02.png" alt="Click" onerror="this.style.display='none'">
+          <span>Click</span>
+        </div>
+        <div class="payment-method" data-method="cash">
+          <span>💵 Naqd</span>
+        </div>
+      </div>
+
+      <div id="paymentForm">
+        <div class="payment-info">
+          📱 Telefon raqamingizga SMS kod yuboriladi
+        </div>
+        
+        <div class="input-group">
+          <input id="paymentPhone" type="tel" required maxlength="9" placeholder="901234567"/>
+          <label>Telefon raqam (+998)</label>
+        </div>
+
+        <div class="input-group" id="smsCodeGroup" style="display:none;">
+          <input id="smsCode" type="text" required maxlength="5" placeholder="12345"/>
+          <label>SMS kod</label>
+        </div>
+
+        <button id="confirmPaymentBtn" class="prof-btn">
+          <span id="btnText">To'lovni davom ettirish</span>
+          <span id="btnLoader" class="loader" style="display:none;"></span>
+        </button>
+        
+        <button id="confirmCodeBtn" class="prof-btn" style="display:none;">
+          Tasdiqlash
+        </button>
+      </div>
+
+      <div id="paymentSuccess" style="display:none; text-align:center; padding:20px 0;">
+        <div style="font-size:48px; margin-bottom:10px;">✅</div>
+        <div style="color:#00c853; font-weight:600; font-size:18px; margin-bottom:8px;">
+          To'lov muvaffaqiyatli!
+        </div>
+        <div style="color:#666; font-size:14px;">
+          Buyurtmangiz qabul qilindi
+        </div>
+      </div>
     </div>
   </div>
 
