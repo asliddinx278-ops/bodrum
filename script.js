@@ -46,7 +46,7 @@ const menu = [
   { id: 4, name: 'Klyukva-Burger', price: 44000, img: 'https://i.ibb.co/sJtWCn5M/images-1.jpg' },
 ];
 
-// ---------- 2. INDEXEDDB (Profile uchun) ----------
+// ---------- 2. INDEXEDDB ----------
 const DB_NAME = 'bodrumDB';
 const STORE_PROFILE = 'profile';
 
@@ -72,7 +72,6 @@ async function saveProfileDB({ name, phone }) {
       tx.oncomplete = resolve;
       tx.onerror = reject;
     });
-    console.log('✅ Profile saved');
   } catch (error) {
     console.error('❌ Error saving profile:', error);
     throw error;
@@ -88,7 +87,6 @@ async function getProfileDB() {
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
-    console.log('Profile:', result);
     return result;
   } catch (error) {
     console.error('❌ Error:', error);
@@ -96,18 +94,16 @@ async function getProfileDB() {
   }
 }
 
-// ---------- 3. LOCALSTORAGE (savat) ----------
+// ---------- 3. LOCALSTORAGE ----------
 const CART_KEY = 'bodrum_cart';
 
 function saveCartLS() {
   localStorage.setItem(CART_KEY, JSON.stringify(cart));
-  console.log('💾 Cart saved:', cart.length, 'items');
 }
 
 function loadCartLS() {
   const raw = localStorage.getItem(CART_KEY);
   cart = raw ? JSON.parse(raw) : [];
-  console.log('📦 Cart loaded:', cart.length, 'items');
 }
 
 // ---------- 4. TAB SWITCH ----------
@@ -127,6 +123,9 @@ const cartTotal = document.getElementById('cartTotal');
 const orderBtn = document.getElementById('orderBtn');
 
 let cart = [];
+let currentLocation = null;
+let selectedPaymentMethod = 'payme';
+
 loadCartLS();
 renderCart();
 
@@ -158,7 +157,11 @@ menuGrid.addEventListener('click', e => {
     
     saveCartLS();
     renderCart();
-    console.log('➕ Added:', product.name);
+    
+    // Animatsiya
+    const badge = document.getElementById('cartBadge');
+    badge.style.transform = 'scale(1.3)';
+    setTimeout(() => badge.style.transform = 'scale(1)', 200);
   }
 });
 
@@ -222,7 +225,7 @@ cartList.addEventListener('click', e => {
   renderCart();
 });
 
-// Joylashuvni olish funksiyasi
+// Joylashuvni olish
 function requestLocation() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
@@ -237,7 +240,6 @@ function requestLocation() {
         resolve(`${lat},${lon}`);
       },
       (error) => {
-        console.error('Geolocation error:', error);
         reject(error);
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
@@ -245,7 +247,45 @@ function requestLocation() {
   });
 }
 
-// Buyurtma berish - Yangilangan versiya
+// ---------- PAYMENT MODAL LOGIC ----------
+const paymentModal = document.getElementById('paymentModal');
+const paymentTotal = document.getElementById('paymentTotal');
+const paymentPhone = document.getElementById('paymentPhone');
+const paymentForm = document.getElementById('paymentForm');
+const paymentSuccess = document.getElementById('paymentSuccess');
+const confirmPaymentBtn = document.getElementById('confirmPaymentBtn');
+const confirmCodeBtn = document.getElementById('confirmCodeBtn');
+const smsCodeGroup = document.getElementById('smsCodeGroup');
+const btnText = document.getElementById('btnText');
+const btnLoader = document.getElementById('btnLoader');
+
+// To'lov usullarini tanlash
+document.querySelectorAll('.payment-method').forEach(method => {
+  method.addEventListener('click', () => {
+    document.querySelectorAll('.payment-method').forEach(m => m.classList.remove('active'));
+    method.classList.add('active');
+    selectedPaymentMethod = method.dataset.method;
+    
+    // Naqd to'lov uchun maxsus ko'rinish
+    if (selectedPaymentMethod === 'cash') {
+      document.querySelector('.payment-info').textContent = '💵 Yetkazib berilganda naqd pul to\'laysiz';
+      smsCodeGroup.style.display = 'none';
+      confirmPaymentBtn.style.display = 'block';
+      confirmCodeBtn.style.display = 'none';
+      btnText.textContent = 'Buyurtma berish';
+    } else {
+      document.querySelector('.payment-info').textContent = '📱 Telefon raqamingizga SMS kod yuboriladi';
+      btnText.textContent = 'To\'lovni davom ettirish';
+    }
+  });
+});
+
+// Telefon formati
+paymentPhone.addEventListener('input', (e) => {
+  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 9);
+});
+
+// To'lovni boshlash
 orderBtn.addEventListener('click', async () => {
   if (!cart.length) {
     alert('Savat bo\'sh!');
@@ -259,63 +299,146 @@ orderBtn.addEventListener('click', async () => {
     return;
   }
   
-  // Joylashuvni so'rash
+  // Joylashuvni olish
   orderBtn.disabled = true;
   orderBtn.textContent = 'Joylashuv aniqlanmoqda...';
   
   try {
-    // Joylashuvni olish
-    const location = await requestLocation();
+    currentLocation = await requestLocation();
+    console.log('📍 Location:', currentLocation);
+  } catch (error) {
+    console.warn('Location error:', error);
+    // Joylashuv olmasa ham davom etish (ixtiyoriy)
+    if (!confirm('Joylashuvni aniqlashda xatolik. Davom etishni xohlaysizmi?')) {
+      orderBtn.disabled = false;
+      orderBtn.textContent = 'Buyurtma berish';
+      return;
+    }
+  }
+  
+  // To'lov modalini ochish
+  const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  paymentTotal.textContent = total.toLocaleString() + ' so\'m';
+  
+  // Profil telefonini avto to'ldirish
+  paymentPhone.value = profile.phone || '';
+  
+  // Modalni ko'rsatish
+  paymentModal.classList.add('show');
+  
+  orderBtn.disabled = false;
+  orderBtn.textContent = 'Buyurtma berish';
+});
+
+// To'lov tugmasi bosilganda
+confirmPaymentBtn.addEventListener('click', async () => {
+  const phone = paymentPhone.value.trim();
+  
+  if (!phone || phone.length !== 9) {
+    alert('Telefon raqamni to\'g\'ri kiriting!');
+    paymentPhone.focus();
+    return;
+  }
+  
+  if (selectedPaymentMethod === 'cash') {
+    // Naqd to'lov - to'g'ridan-to'g'ri buyurtma
+    await completeOrder('cash', 'pending');
+    return;
+  }
+  
+  // Payme/Click uchun SMS kod imitatsiyasi
+  btnText.textContent = 'Kod yuborilmoqda...';
+  btnLoader.style.display = 'inline-block';
+  confirmPaymentBtn.disabled = true;
+  
+  // Simulyatsiya - 2 soniya kutish
+  setTimeout(() => {
+    btnLoader.style.display = 'none';
+    smsCodeGroup.style.display = 'block';
+    confirmPaymentBtn.style.display = 'none';
+    confirmCodeBtn.style.display = 'block';
     
-    orderBtn.textContent = 'Buyurtma saqlanmoqda...';
+    // Kod kiritish maydoniga fokus
+    document.getElementById('smsCode').focus();
     
-    const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
-    
-    // Buyurtma obyektini yaratish
-    const order = {
-      id: Date.now(), // Unique ID
-      name: profile.name,
-      phone: profile.phone,
-      items: [...cart],
-      total: total,
-      status: 'pending', // Yangi buyurtma
-      createdAt: new Date().toISOString(),
-      location: location, // Joylashuv koordinatalari
-      tg_id: tg?.initDataUnsafe?.user?.id || null
-    };
-    
-    // LocalStorage dan mavjud buyurtmalarni olish
-    const existingOrders = JSON.parse(localStorage.getItem('bodrum_admin_orders') || '[]');
-    
-    // Yangi buyurtmani boshiga qo'shish
-    existingOrders.unshift(order);
-    
-    // LocalStorage ga saqlash (Admin panel avtomatik ko'radi)
-    localStorage.setItem('bodrum_admin_orders', JSON.stringify(existingOrders));
-    
-    console.log('✅ Buyurtma saqlandi:', order);
+    alert('📱 Test rejimi: SMS kod - 12345');
+  }, 1500);
+});
+
+// SMS kodni tasdiqlash
+confirmCodeBtn.addEventListener('click', async () => {
+  const code = document.getElementById('smsCode').value.trim();
+  
+  if (code !== '12345') {
+    alert('Noto\'g\'ri kod! Test rejimi uchun: 12345');
+    return;
+  }
+  
+  await completeOrder(selectedPaymentMethod, 'paid');
+});
+
+// Buyurtmani yakunlash funksiyasi
+async function completeOrder(paymentMethod, paymentStatus) {
+  const profile = await getProfileDB();
+  const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  
+  const order = {
+    id: Date.now(),
+    name: profile.name,
+    phone: profile.phone,
+    items: [...cart],
+    total: total,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    location: currentLocation,
+    paymentMethod: paymentMethod, // payme, click, cash
+    paymentStatus: paymentStatus, // paid, pending
+    tg_id: tg?.initDataUnsafe?.user?.id || null
+  };
+  
+  // LocalStorage ga saqlash
+  const existingOrders = JSON.parse(localStorage.getItem('bodrum_admin_orders') || '[]');
+  existingOrders.unshift(order);
+  localStorage.setItem('bodrum_admin_orders', JSON.stringify(existingOrders));
+  
+  // Muvaffaqiyatli ko'rsatish
+  paymentForm.style.display = 'none';
+  paymentSuccess.style.display = 'block';
+  
+  // 2 soniyadan keyin yopish
+  setTimeout(() => {
+    // Modalni yopish
+    closePaymentModal();
     
     // Savatni tozalash
     cart = [];
     saveCartLS();
     renderCart();
     
-    // Muvaffaqiyat xabari
-    alert('✅ Buyurtma qabul qilindi!\n\nOperator tez orada siz bilan bog\'lanadi.');
-    
-    // Profil tabiga o'tish (buyurtmalar tarixi ko'rinadi)
+    // Profilga o'tish
     document.querySelector('[data-tab="profile"]').click();
-    
-  } catch (error) {
-    console.error('Xato:', error);
-    alert('❌ Joylashuvni aniqlashda xatolik yuz berdi.\n\nIltimos, joylashuv ruxsatini bering va qayta urinib ko\'ring.\n\nAgar muammo takrorlansa, telefon orqali bog\'laning.');
-  } finally {
-    orderBtn.disabled = false;
-    orderBtn.textContent = 'Buyurtma berish';
-  }
-});
+  }, 2000);
+}
 
-// ---------- 7. PROFILE ----------
+function closePaymentModal() {
+  paymentModal.classList.remove('show');
+  
+  // Reset form
+  setTimeout(() => {
+    paymentForm.style.display = 'block';
+    paymentSuccess.style.display = 'none';
+    smsCodeGroup.style.display = 'none';
+    confirmPaymentBtn.style.display = 'block';
+    confirmCodeBtn.style.display = 'none';
+    confirmPaymentBtn.disabled = false;
+    document.getElementById('smsCode').value = '';
+    selectedPaymentMethod = 'payme';
+    document.querySelectorAll('.payment-method').forEach(m => m.classList.remove('active'));
+    document.querySelector('[data-method="payme"]').classList.add('active');
+  }, 300);
+}
+
+// ---------- PROFILE ----------
 const profModal = document.getElementById('profModal');
 const modalName = document.getElementById('modalName');
 const modalPhone = document.getElementById('modalPhone');
@@ -355,7 +478,6 @@ modalSave.addEventListener('click', async () => {
   }
 });
 
-// Profile tab
 const inpName = document.getElementById('inpName');
 const inpPhone = document.getElementById('inpPhone');
 const saveProf = document.getElementById('saveProf');
@@ -366,8 +488,6 @@ document.querySelector('[data-tab="profile"]').addEventListener('click', async (
     inpName.value = profile.name || '';
     inpPhone.value = profile.phone || '';
   }
-  
-  // Buyurtmalarni ko'rsatish (localStorage dan)
   renderUserOrders();
 });
 
@@ -375,32 +495,31 @@ function renderUserOrders() {
   const ordersList = document.getElementById('ordersList');
   const allOrders = JSON.parse(localStorage.getItem('bodrum_admin_orders') || '[]');
   
-  // Foydalanuvchini buyurtmalarini filterlash (telefon raqami bo'yicha)
-  const profile = { phone: inpPhone.value };
-  
   if (allOrders.length === 0) {
     ordersList.innerHTML = 'Hali buyurtma yo\'q';
     return;
   }
   
-  // Oxirgi 5 buyurtmani ko'rsatish
   const recentOrders = allOrders.slice(0, 5);
   
   ordersList.innerHTML = recentOrders.map(order => {
     const date = new Date(order.createdAt);
     const dateStr = date.toLocaleDateString('uz-UZ');
     const timeStr = date.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
-    const itemsText = order.items ? order.items.map(i => i.name).join(', ') : '';
+    
+    const paymentIcon = order.paymentMethod === 'payme' ? '💳 Payme' : 
+                       order.paymentMethod === 'click' ? '💳 Click' : '💵 Naqd';
     
     return `
       <div class="order-item" style="border-bottom: 1px solid #eee; padding: 10px 0; margin-bottom: 10px;">
-        <div style="font-weight: 600; color: #ff6600; margin-bottom: 4px;">
-          ${order.total?.toLocaleString() || 0} so'm
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <span style="font-weight:600; color:#ff6600;">${order.total?.toLocaleString()} so'm</span>
+          <span style="font-size:11px; color:#666;">${paymentIcon}</span>
         </div>
         <div style="font-size: 13px; color: #333; margin-bottom: 4px;">
-          ${itemsText}
+          ${order.items.map(i => i.name).join(', ')}
         </div>
-        <div class="order-date" style="font-size: 12px; color: #888;">
+        <div style="font-size: 12px; color: #888;">
           ${dateStr} ${timeStr}
         </div>
         <div style="font-size: 12px; margin-top: 4px; padding: 2px 8px; border-radius: 4px; display: inline-block; ${
@@ -412,6 +531,7 @@ function renderUserOrders() {
             order.status === 'accepted' ? 'Qabul qilindi' : 
             order.status === 'rejected' ? 'Bekor qilindi' : 'Yetkazildi'}
         </div>
+        ${order.paymentStatus === 'paid' ? '<span style="color:#00c853; font-size:11px; margin-left:8px;">✅ To\'langan</span>' : ''}
       </div>
     `;
   }).join('');
@@ -439,21 +559,11 @@ saveProf.addEventListener('click', async () => {
   }
 });
 
-// Phone format
 [inpPhone, modalPhone].forEach(input => {
   if (input) {
     input.addEventListener('input', (e) => {
       e.target.value = e.target.value.replace(/\D/g, '').slice(0, 9);
     });
-  }
-});
-
-// Profil mavjudligini tekshirish (birinchi marta)
-window.addEventListener('load', async () => {
-  const profile = await getProfileDB();
-  if (!profile) {
-    // Profil bo'lmasa modal ochish (ixtiyoriy)
-    // openProfModal();
   }
 });
 
