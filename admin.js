@@ -157,8 +157,14 @@ function createOrderCard(order) {
     ? order.items.map(i => `${i.name} x${i.qty}`).join(', ') 
     : "Noma'lum";
   
-  // Joylashuv ikonkasi
   const hasLocation = order.location && order.location.includes(',');
+  
+  // To'lov statusi
+  const paymentMethod = order.paymentMethod || 'cash';
+  const paymentStatus = order.paymentStatus || 'pending';
+  const paymentText = paymentMethod === 'payme' ? 'Payme' : 
+                     paymentMethod === 'click' ? 'Click' : 'Naqd';
+  const paymentClass = paymentStatus === 'paid' ? 'paid' : 'pending';
   
   return `
     <div class="order-card ${order.status === 'pending' ? 'new' : ''}" data-order-id="${order.id}">
@@ -172,6 +178,11 @@ function createOrderCard(order) {
         ${hasLocation ? '📍' : ''}
       </div>
       <div class="order-items-preview">${itemsPreview}</div>
+      <div style="margin-bottom:8px;">
+        <span class="payment-status ${paymentClass}">
+          ${paymentStatus === 'paid' ? '✅' : '⏳'} ${paymentText}
+        </span>
+      </div>
       <div class="order-footer">
         <span class="order-total">${(order.total || 0).toLocaleString()} so'm</span>
         <span class="order-status ${order.status}">${getStatusText(order.status)}</span>
@@ -179,7 +190,6 @@ function createOrderCard(order) {
     </div>
   `;
 }
-
 function getStatusText(status) {
   const texts = {
     'pending': 'Yangi',
@@ -363,3 +373,4 @@ style.textContent = `
   }
 `;
 document.head.appendChild(style);
+
